@@ -1,0 +1,22 @@
+[Unit]
+Description=M365 Copilot2API gateway
+Documentation=https://github.com/keaidang/M365-Copilot2API-Revise
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/m365-copilot2api
+WorkingDirectory=/var/lib/m365-copilot2api
+EnvironmentFile=-/etc/m365-copilot2api.env
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/m365-copilot2api
+
+[Install]
+WantedBy=multi-user.target

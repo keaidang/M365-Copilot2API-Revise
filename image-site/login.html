@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#070a12">
+  <title>登录 | GPT-image-2 图像生成</title>
+  <style>
+    :root{--bg:#070a12;--panel:rgba(18,24,37,.88);--line:rgba(255,255,255,.1);--text:#f7f8fc;--muted:#9ba8bc;--accent:#8064ff;--accent2:#36c5f0;--danger:#ff7487}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 15% 10%,rgba(128,100,255,.28),transparent 34%),radial-gradient(circle at 90% 8%,rgba(54,197,240,.2),transparent 30%),linear-gradient(160deg,#070a12,#0c1220);color:var(--text);font-family:Inter,"Noto Sans SC",system-ui,sans-serif}.shell{width:min(100%,440px)}.brand{text-align:center;margin-bottom:24px}.mark{width:62px;height:62px;margin:0 auto 16px;border-radius:20px;display:grid;place-items:center;font-size:30px;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 18px 50px rgba(106,92,255,.35)}h1{font-size:25px;margin:0 0 8px}.subtitle{color:var(--muted);font-size:14px;line-height:1.6}.card{padding:28px;background:var(--panel);border:1px solid var(--line);border-radius:24px;box-shadow:0 28px 80px rgba(0,0,0,.38);backdrop-filter:blur(20px)}label{display:block;margin:0 0 8px;font-size:13px;font-weight:700}.field{margin-bottom:18px}.input{width:100%;border:1px solid #2a354b;border-radius:13px;padding:13px 14px;background:#0b111d;color:var(--text);font:inherit;outline:none;transition:.2s}.input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(128,100,255,.17)}button{width:100%;border:0;border-radius:13px;padding:13px 16px;background:linear-gradient(135deg,var(--accent),#5f8cff);color:#fff;font:inherit;font-weight:800;cursor:pointer;box-shadow:0 14px 30px rgba(104,88,255,.28)}button:hover{filter:brightness(1.08);transform:translateY(-1px)}button:disabled{opacity:.6;cursor:wait;transform:none}.error{display:none;margin:0 0 18px;padding:12px 13px;border:1px solid rgba(255,116,135,.34);border-radius:12px;background:rgba(255,116,135,.09);color:#ffabb6;font-size:13px;line-height:1.5}.note{margin-top:18px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6}@media(max-width:520px){body{padding:15px}.card{padding:22px;border-radius:20px}.brand{margin-bottom:18px}}
+
+    button,input{touch-action:manipulation;-webkit-tap-highlight-color:rgba(128,100,255,.16);font-size:16px}
+    body{padding-left:calc(24px + env(safe-area-inset-left,0px));padding-right:calc(24px + env(safe-area-inset-right,0px));padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+    .note{word-break:break-word}
+    @media(max-width:520px){
+      body{padding-left:calc(15px + env(safe-area-inset-left,0px));padding-right:calc(15px + env(safe-area-inset-right,0px));padding-bottom:calc(15px + env(safe-area-inset-bottom,0px))}
+      h1{font-size:21px}
+      .mark{width:54px;height:54px;font-size:26px;margin-bottom:12px}
+      .brand{margin-bottom:16px}
+      button{padding:15px 16px}
+      .input{padding:14px 13px}
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="brand"><div class="mark" aria-hidden="true">✦</div><h1>GPT-image-2 图像生成</h1><div class="subtitle">登录安全工作区，开始你的视觉创作</div></header>
+    <form class="card" id="loginForm">
+      <div class="error" id="error" role="alert"></div>
+      <div class="field"><label for="username">用户名</label><input class="input" id="username" name="username" type="text" autocomplete="username" maxlength="64" required autofocus></div>
+      <div class="field"><label for="password">密码</label><input class="input" id="password" name="password" type="password" autocomplete="current-password" required></div>
+      <button id="submit" type="submit">安全登录</button>
+      <div class="note">登录状态使用加密签名的安全 Cookie 保存。浏览器不会接触绘图 API Key。</div>
+    </form>
+  </main>
+  <script>
+    const form=document.getElementById('loginForm');
+    const errorBox=document.getElementById('error');
+    const submit=document.getElementById('submit');
+    form.addEventListener('submit',async(event)=>{
+      event.preventDefault();errorBox.style.display='none';submit.disabled=true;submit.textContent='登录中…';
+      try{
+        const response=await fetch('/image/api/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('username').value,password:document.getElementById('password').value})});
+        let data={};try{data=await response.json()}catch(_error){}
+        if(!response.ok)throw new Error(data.error&&data.error.message?data.error.message:'登录失败，请稍后重试');
+        location.replace('/image/');
+      }catch(error){errorBox.textContent=error.message||'登录失败';errorBox.style.display='block';}
+      finally{submit.disabled=false;submit.textContent='安全登录';}
+    });
+  </script>
+</body>
+</html>

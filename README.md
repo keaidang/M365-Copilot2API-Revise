@@ -1,7 +1,7 @@
 # M365 Copilot2API
 
 <p align="center">
-  <img src="https://img.shields.io/github/license/HEXUXIU/M365-Copilot2API" alt="License">
+  <img src="https://img.shields.io/github/license/keaidang/M365-Copilot2API-Revise" alt="License">
   <img src="https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go" alt="Go Version">
   <img src="https://img.shields.io/badge/API-OpenAI%20Compatible-412991?logo=openai" alt="OpenAI Compatible">
   <img src="https://img.shields.io/badge/API-Anthropic%20Compatible-FF6B6B?logo=anthropic" alt="Anthropic Compatible">
@@ -225,7 +225,7 @@ launchctl load ~/Library/LaunchAgents/com.m365copilot2api.plist
 ### 源码编译
 
 ```powershell
-git clone https://github.com/HEXUXIU/M365-Copilot2API.git
+git clone https://github.com/keaidang/M365-Copilot2API-Revise.git
 cd M365-Copilot2API
 
 # 设置管理员密码（可选，默认 admin123），生产环境务必设置强密码
@@ -276,6 +276,24 @@ python manage.py stop     # 停止服务
 4. 用下面的 API 示例验证调用。
 
 > 有多个 M365 账号时可以重复授权，网关会以轮询 + 故障转移的方式自动调度全部账号。
+
+## 附带绘图网站（image-site）
+
+本仓库除网关外还内置一个独立的 **GPT-image-2 绘图网站**（`image-site/`，中文界面）：独立账号密码登录（PBKDF2 + HttpOnly/SameSite Cookie，密码仅存哈希）、服务端内置 API Key（永不下发浏览器）、账号池选择、文生图与图片编辑上传、手机端自适应。
+
+两种方式一键部署**网关 + 绘图站**：
+
+```bash
+# Docker：同时启动两个服务（绘图站 127.0.0.1:4180）
+docker compose up -d --build
+
+# systemd：编译网关 + 安装两个服务 + 生成配置（可重复执行，不覆盖已有配置）
+sudo ./deploy/install.sh
+```
+
+反向代理示例见 [`deploy/Caddyfile.example`](deploy/Caddyfile.example)（`/image/*` → 绘图站，其余 → 网关），完整说明见 [`image-site/README.md`](image-site/README.md)。
+
+> ⚠️ 上方「快速开始」的预编译二进制为上游原版；本仓库包含的修改需源码构建，`deploy/install.sh` 与 `docker compose build` 都会自动完成。
 
 ## 配置说明
 

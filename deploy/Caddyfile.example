@@ -1,0 +1,31 @@
+# Example Caddy configuration: gateway API + bundled drawing site on one
+# HTTPS domain. Both services listen on loopback only; Caddy terminates TLS.
+#
+# Usage: replace example.com, point a DNS A/AAAA record here, then either use
+# this file as /etc/caddy/Caddyfile or paste the block into an existing one.
+
+example.com {
+	# Drawing site: no prefix stripping — server.py routes on /image/* itself.
+	handle /image {
+		redir /image/ 308
+	}
+
+	handle /image/* {
+		reverse_proxy 127.0.0.1:4180
+	}
+
+	# Everything else goes to the gateway (OpenAI/Anthropic-compatible API).
+	reverse_proxy 127.0.0.1:4141 {
+		# SSE streaming: disable buffering so tokens flush immediately.
+		flush_interval -1
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+
+	log {
+		output file /var/log/caddy/access.log
+		format console
+	}
+}

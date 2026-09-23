@@ -56,3 +56,7 @@ _wip_backup_*
 *.dll
 tmp_lab/
 tmp_dump/
+
+# deploy/systemd ships unit files — don't let the /m365-copilot2api.service
+# pattern above swallow them
+!deploy/systemd/m365-copilot2api.service

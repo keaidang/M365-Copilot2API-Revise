@@ -1,0 +1,32 @@
+[Unit]
+Description=GPT-image-2 drawing site (bundled with M365 Copilot2API)
+Documentation=https://github.com/keaidang/M365-Copilot2API-Revise
+After=network-online.target m365-copilot2api.service
+Wants=network-online.target
+# Wants (not Requires): restarting the gateway must never take this site down.
+Wants=m365-copilot2api.service
+
+[Service]
+Type=simple
+User=image-site
+Group=image-site
+WorkingDirectory=/opt/m365-image-site
+EnvironmentFile=/etc/m365-image-site.env
+ExecStart=/usr/bin/python3 /opt/m365-image-site/server.py
+Restart=on-failure
+RestartSec=3
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/m365-image-site
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

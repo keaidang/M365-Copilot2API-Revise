@@ -21,3 +21,27 @@ services:
     volumes:
       - ./data:/data
       - ./secrets/m365_admin_password:/run/secrets/m365_admin_password:ro
+
+  image-site:
+    build: ./image-site
+    image: m365-image-site:latest
+    container_name: m365-image-site
+    restart: unless-stopped
+    depends_on:
+      - m365-copilot2api
+    ports:
+      - "127.0.0.1:4180:4180"
+    environment:
+      IMAGE_SITE_HOST: 0.0.0.0
+      IMAGE_SITE_PORT: "4180"
+      IMAGE_SITE_UPSTREAM: http://m365-copilot2api:4141
+      IMAGE_SITE_DB: /data/users.db
+      IMAGE_SITE_API_KEY: ${IMAGE_SITE_API_KEY:-}
+      IMAGE_SITE_SESSION_SECRET: ${IMAGE_SITE_SESSION_SECRET:-}
+      IMAGE_SITE_INITIAL_USERNAME: ${IMAGE_SITE_INITIAL_USERNAME:-}
+      IMAGE_SITE_INITIAL_PASSWORD: ${IMAGE_SITE_INITIAL_PASSWORD:-}
+    volumes:
+      - image_site_db:/data
+
+volumes:
+  image_site_db:
