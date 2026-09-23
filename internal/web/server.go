@@ -400,12 +400,48 @@ func (s *Server) Routes() http.Handler {
 	m.HandleFunc("/v1/images/generations", s.imageGenerations)
 	m.HandleFunc("/v1/images/edits", s.imageEdits)
 	m.HandleFunc("/v1/images/files/", s.generatedImageFile)
+	m.HandleFunc("/v1/accounts", s.publicAccounts)
 	m.HandleFunc("/v1/memory/flags", s.handleMemoryFlags)
 	m.HandleFunc("/v1/memory/instructions", s.handleMemoryInstructions)
 	m.HandleFunc("/v1/memory/instructions/", s.handleMemoryInstructionsID)
 	m.HandleFunc("/v1/memory/settings", s.handleMemorySettings)
 	m.HandleFunc("/", s.rootPage)
 	return recoverPanics(requestID(httpTrace(securityHeaders(s.adminMiddleware(s.debugMiddleware(m))))))
+}
+
+// publicAccounts exposes a minimal account catalog to API-key authenticated
+// clients. It intentionally excludes tokens, tenant identifiers, proxy data,
+// quota details, and other administration-only fields.
+func (s *Server) publicAccounts(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeOpenAIError(w, http.StatusMethodNotAllowed, "invalid_request_error", "method not allowed")
+		return
+	}
+	type accountView struct {
+		ID          string `json:"id"`
+		Email       string `json:"email"`
+		DisplayName string `json:"displayName"`
+		Status      string `json:"status"`
+	}
+	list := s.tokens.List()
+	out := make([]accountView, 0, len(list))
+	for _, account := range list {
+		status := account.Status
+		if account.ScheduleDisabled {
+			status = "disabled"
+		} else if s.accountPool != nil {
+			if _, coolingDown := s.accountPool.CooldownUntil(account.ID); coolingDown {
+				status = "cooldown"
+			}
+		}
+		out = append(out, accountView{
+			ID:          account.ID,
+			Email:       account.Email,
+			DisplayName: account.DisplayName,
+			Status:      status,
+		})
+	}
+	jsonOut(w, map[string]any{"accounts": out})
 }
 
 func (s *Server) adminMiddleware(next http.Handler) http.Handler {
