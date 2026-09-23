@@ -125,20 +125,42 @@ func (s *Server) imageGenerations(w http.ResponseWriter, r *http.Request) {
 		endpoint = "/v1/images/edits"
 		prompt = fmt.Sprintf("Edit the first attached image with GPT Image 2. Size: %s. Instructions: %s. Preserve everything not requested to change. Return the edited image URL directly.", size, b.Prompt)
 	}
-	res, err := s.chatWithAccount(ctx, acc.ID, chathub.Account{AccessToken: acc.AccessToken, OID: acc.OID, TID: acc.TID}, chathub.Request{Text: prompt, Tone: "magic", Attachments: b.Attachments, LicenseType: s.settings.get().LicenseType, Scenario: s.settings.get().Scenario, FeatureFlags: s.featureFlags()})
+	runChat := func() (chathub.Result, error) {
+		r, callErr := s.chatWithAccount(ctx, acc.ID, chathub.Account{AccessToken: acc.AccessToken, OID: acc.OID, TID: acc.TID}, chathub.Request{Text: prompt, Tone: "magic", Attachments: b.Attachments, LicenseType: s.settings.get().LicenseType, Scenario: s.settings.get().Scenario, FeatureFlags: s.featureFlags()})
+		if callErr != nil {
+			return chathub.Result{}, callErr
+		}
+		if len(r.Images) == 0 {
+			if urls := extractImageURLs(r.RawResult); len(urls) > 0 {
+				r.Images = urls
+			}
+		}
+		if len(r.Images) == 0 {
+			if urls := extractImageURLs(r.Text); len(urls) > 0 {
+				r.Images = urls
+			}
+		}
+		return r, nil
+	}
+	res, err := runChat()
 	if err != nil {
 		writeUpstreamError(w, err)
 		return
 	}
 	log.Printf("[image-gen] conversation=%s images=%d text_len=%d events=%d raw_len=%d", res.ConversationID, len(res.Images), len(res.Text), len(res.Events), len(res.RawResult))
-	if len(res.Images) == 0 {
-		if urls := extractImageURLs(res.RawResult); len(urls) > 0 {
-			res.Images = urls
-		}
-	}
-	if len(res.Images) == 0 {
-		if urls := extractImageURLs(res.Text); len(urls) > 0 {
-			res.Images = urls
+	// Edits occasionally hit an upstream attachment race: the model answers
+	// within seconds that it never received the image even though the payload
+	// carried it (observed 2026-09-23: same input failed twice in ~7s, then
+	// succeeded on the third fresh-conversation attempt). Each Chat call mints
+	// a new conversation id, so retrying once mirrors the manual retry that
+	// empirically works.
+	if len(res.Images) == 0 && b.Operation == "edit" && ctx.Err() == nil && isMissingAttachmentRefusal(res.Text) {
+		log.Printf("[image-gen] edit lost its attachment (conversation=%s); retrying once on a fresh conversation", res.ConversationID)
+		if retryRes, retryErr := runChat(); retryErr == nil {
+			res = retryRes
+			log.Printf("[image-gen] edit retry conversation=%s images=%d text_len=%d", res.ConversationID, len(res.Images), len(res.Text))
+		} else {
+			log.Printf("[image-gen] edit retry failed err=%v", retryErr)
 		}
 	}
 	if len(res.Images) == 0 {
@@ -162,7 +184,7 @@ func (s *Server) imageGenerations(w http.ResponseWriter, r *http.Request) {
 		debug := map[string]any{"text": textPreview, "raw_len": len(res.RawResult), "events": len(res.Events), "images": res.Images, "raw_preview": rawPreview}
 		b, _ := json.Marshal(debug)
 		log.Printf("[image-gen-debug] %s", string(b))
-		writeOpenAIError(w, http.StatusBadGateway, "upstream_error", "upstream returned no image resource")
+		writeOpenAIError(w, http.StatusBadGateway, "upstream_error", imageNoResourceMessage(res.Text))
 		return
 	}
 	images := res.Images
@@ -468,6 +490,50 @@ func isImageQuotaRefusal(text string) bool {
 		}
 	}
 	return false
+}
+
+// isMissingAttachmentRefusal detects upstream edit replies where the model
+// says it never received the attached image. Observed on upstream attachment
+// frame races: the model answers within seconds asking to re-upload even
+// though the chathub payload carried the image (2026-09-23 production logs).
+func isMissingAttachmentRefusal(text string) bool {
+	low := strings.ToLower(text)
+	for _, phrase := range []string{
+		"upload the image you want edited",
+		"no image attachment",
+		"attached image available",
+		"image attachment",
+		"don't have any image",
+		"do not have any image",
+		"please upload",
+		"请上传要编辑的图片",
+		"请上传图片",
+		"没有图片附件",
+		"未找到图片附件",
+		"没有收到图片",
+	} {
+		if strings.Contains(low, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// imageNoResourceMessage builds the client-facing message when no image
+// arrived. Upstream often explains itself in natural language (content-safety
+// refusals, attachment requests); surface that text so callers see the real
+// reason instead of a bare "no image resource" placeholder. Text is truncated
+// rune-safely to 500 characters.
+func imageNoResourceMessage(text string) string {
+	const fallback = "upstream returned no image resource"
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return fallback
+	}
+	if r := []rune(text); len(r) > 500 {
+		text = string(r[:500]) + "…"
+	}
+	return fallback + ": " + text
 }
 
 // extractImageURLs finds image URLs in a raw JSON string by searching for URL patterns.
