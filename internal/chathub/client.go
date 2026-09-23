@@ -1109,8 +1109,32 @@ func (c *Client) chatWithHandlers(ctx context.Context, acc Account, req Request,
 					return Result{}, ErrRateLimitNotice
 				}
 				if text == "" {
-					returnConn = false
-					return Result{}, ErrEmptyCompletion
+					// Upstream image generations can arrive as an image-only
+					// completion: the GraphicArt payload (ImageReferenceUrls)
+					// lives in the type-1 events while the final message text
+					// stays empty. Only treat empty text as an error when no
+					// image resource arrived either, so callers can consume
+					// the Result.Images built below.
+					imgs := imageURLs(events)
+					if len(imgs) == 0 {
+						// Keep a truncated raw event preview so silent upstream
+						// format changes stay diagnosable from the logs.
+						preview := ""
+						for _, ev := range events {
+							if len(preview) >= 4000 {
+								break
+							}
+							s := string(ev)
+							if len(s) > 1500 {
+								s = s[:1500] + "..."
+							}
+							preview += s + "\n"
+						}
+						log.Printf("[chathub] empty completion events=%d images=0 preview=%q", len(events), preview)
+						returnConn = false
+						return Result{}, ErrEmptyCompletion
+					}
+					log.Printf("[chathub] image-only completion: empty text carried %d image URL(s)", len(imgs))
 				}
 				if offense != "" {
 					returnConn = false
