@@ -46,6 +46,24 @@ type imageGenerationRequest struct {
 	Attachments    []chathub.Attachment `json:"attachments,omitempty"`
 }
 
+// normalizeImageSize accepts the supported GPT Image 2 dimensions and repairs
+// a common truncated landscape-size typo (1536x102 -> 1536x1024). Returning an
+// empty string lets the handler reject unsupported dimensions before sending a
+// malformed prompt upstream.
+func normalizeImageSize(size string) string {
+	size = strings.ToLower(strings.TrimSpace(size))
+	size = strings.ReplaceAll(size, "×", "x")
+	if size == "1536x102" {
+		size = "1536x1024"
+	}
+	switch size {
+	case "1024x1024", "1536x1024", "1024x1536":
+		return size
+	default:
+		return ""
+	}
+}
+
 func (s *Server) imageGenerations(w http.ResponseWriter, r *http.Request) {
 	startedAt := time.Now()
 	if r.Method != http.MethodPost {
@@ -87,9 +105,15 @@ func (s *Server) imageGenerations(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(s.settings.get().ImageTimeoutSeconds)*time.Second)
 	defer cancel()
-	size := b.Size
+	size := strings.TrimSpace(b.Size)
 	if size == "" {
 		size = "1024x1024"
+	} else {
+		size = normalizeImageSize(size)
+		if size == "" {
+			writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", "size must be one of 1024x1024, 1536x1024, or 1024x1536")
+			return
+		}
 	}
 	endpoint := "/v1/images/generations"
 	prompt := fmt.Sprintf("Generate an image with GPT Image 2. Size: %s. Description: %s. Return the image URL directly.", size, b.Prompt)
