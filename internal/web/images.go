@@ -24,8 +24,13 @@ const (
 	designerAppServiceScope  = "https://designerappservice.officeapps.live.com/.default"
 	maxGeneratedImageBytes   = 20 << 20
 	maxImageEditRequestBytes = maxGeneratedImageBytes + (2 << 20)
-	generatedImageTTL        = 15 * time.Minute
-	maxGeneratedImages       = 128
+	// maxEditInlineBytes caps the edit source image: its data URI is embedded
+	// in the ChatHub invoke and upstream closes messages over ~4 MB (chathub
+	// maxInlinePayloadBytes). 2.5 MiB raw ≈ 3.5 MB data URI with only one copy
+	// left after the large-image path — inside the proven-working range.
+	maxEditInlineBytes = 2621440
+	generatedImageTTL  = 15 * time.Minute
+	maxGeneratedImages = 128
 )
 
 type generatedImage struct {
@@ -297,6 +302,10 @@ func (s *Server) imageEdits(w http.ResponseWriter, r *http.Request) {
 		ext = "webp"
 	default:
 		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", "image must be PNG, JPEG, or WebP")
+		return
+	}
+	if len(imageData) > maxEditInlineBytes {
+		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", "image is too large to edit; please compress it to under 2.5 MiB and retry")
 		return
 	}
 	name := strings.TrimSpace(header.Filename)

@@ -208,6 +208,13 @@ const (
 	// base64-encoded and held in memory alongside the multipart body.
 	maxAttachments   = 10
 	maxAttachmentMiB = 10
+	// maxInlinePayloadBytes caps the total inline-image embed budget. The data
+	// URI rides twice in the invoke (message.attachments[].url + the legacy
+	// imageBase64 copy). Upstream closes the WebSocket with code 1000 before
+	// completion once the message exceeds ~4 MB (2026-09-28: a 4.63 MB payload
+	// failed 8/8 while 3.81 MB had worked); anything at or under this budget
+	// keeps the historical byte-for-byte payload.
+	maxInlinePayloadBytes = 3900000
 )
 
 // Variants mirrored from the verified browser / Python probe.
@@ -1492,13 +1499,31 @@ func chatPayload(req Request, requestID string, firstTurn bool) string {
 	// Restore the old gateway's multimodal injection path. The historical
 	// implementation merged imageUrl/imageBase64 directly into message rather
 	// than relying solely on the newer attachments array.
+	// Both copies live in one invoke, so a large data URI can push the message
+	// past the upstream WebSocket cap (they close 1000 mid-request once the
+	// message exceeds ~4 MB). When that happens, drop this legacy copy —
+	// message.attachments[].url and the file annotation still carry the image —
+	// keeping the payload inside the proven-working range. Small images stay
+	// byte-for-byte unchanged.
+	inlineURIs := 0
+	for _, a := range req.Attachments {
+		if a.Type == "image" && strings.HasPrefix(a.URL, "data:") {
+			inlineURIs += len(a.URL)
+		}
+	}
+	legacyCopyFits := inlineURIs == 0 || 2*inlineURIs+4096 <= maxInlinePayloadBytes
+	if !legacyCopyFits {
+		log.Printf("[chathub] large inline attachment: data uri total=%d (est payload %d > %d); dropping legacy imageBase64 copy", inlineURIs, 2*inlineURIs+4096, maxInlinePayloadBytes)
+	}
 	for _, a := range req.Attachments {
 		if a.Type != "image" || a.URL == "" {
 			continue
 		}
 		if strings.HasPrefix(a.URL, "data:") {
-			if comma := strings.IndexByte(a.URL, ','); comma >= 0 && comma+1 < len(a.URL) {
-				message["imageBase64"] = a.URL[comma+1:]
+			if legacyCopyFits {
+				if comma := strings.IndexByte(a.URL, ','); comma >= 0 && comma+1 < len(a.URL) {
+					message["imageBase64"] = a.URL[comma+1:]
+				}
 			}
 		} else {
 			message["imageUrl"] = a.URL
